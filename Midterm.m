@@ -17,9 +17,16 @@ dh_table_var = @(t1, t2, t3, t4, t5, t6)...
             t6-pi/2 3*100 0 0];
 
 %% 3) Generating Homogeneous transformation matrix
-
+T01 = tdh(dh_table(1,:));
+T12 = tdh(dh_table(2,:));
+T23 = tdh(dh_table(3,:));
+T34 = tdh(dh_table(4,:));
+T45 = tdh(dh_table(5,:));
+T56 = tdh(dh_table(6,:));
+T06 = simplify(T01*T12*T23*T34*T45*T56,'Steps',20);
+pretty(T06)
 T_total = get_fwdkin(dh_table,true);
-T_tip = T_total(:,:,6);
+T_tip = T06;
 
 %% 4) Calculating position of end effector in home position
 Home = subs(T_tip,[t1 t2 t3 t4 t5 t6,L],[zeros(1,6),100])
@@ -30,8 +37,6 @@ view(-45,-45)
 
 %% 5) Showing a vector in end effector frame relative to body
 ee_vector = [10;10;10];
-ee_point_bframe = Home*[ee_vector;1]
-% or 
 ee_vector_bframe = Home(1:3,1:3)*ee_vector
 
 %% 6) Inverse Kinematics
@@ -42,28 +47,41 @@ eqn1 = pos(1) == desired_point(1);
 eqn2 = pos(2) == desired_point(2);
 eqn3 = pos(3) == desired_point(3);
 solution_ikin = solve([eqn1 eqn2 eqn3],[t1 t4 t5]);
-t1_vals = real(vpa(solution_ikin.t1))
-t4_vals = real(vpa(solution_ikin.t4))
-t5_vals = real(vpa(solution_ikin.t5))
+t1_vals = real(vpa(solution_ikin.t1));
+t4_vals = real(vpa(solution_ikin.t4));
+t5_vals = real(vpa(solution_ikin.t5));
+point1 = [t1_vals(1) 0 0 t4_vals(1) t5_vals(1) 0]'
+point2 = [t1_vals(2) 0 0 t4_vals(2) t5_vals(2) 0]'
 
-result_pos1 = vpa(subs(pos,[t1 t4 t5],[t1_vals(1) t4_vals(1) t5_vals(1)]),4)
-result_pos2 = vpa(subs(pos,[t1 t4 t5],[t1_vals(2) t4_vals(2) t5_vals(2)]),4)
+result_pos1 = vpa(subs(pos,[t1 t2 t3 t4 t5 t6]',point1),4)
+result_pos2 = vpa(subs(pos,[t1 t2 t3 t4 t5 t6]',point2),4)
 
-% finding possible solutions without fixing joints
+%% finding possible solutions only fixing joint 2
 pos = simplify(subs(T_tip(1:3,4),[L t2],[100 0]),'Steps',40)
-eqn1 = pos(1) == desired_point(1);
-eqn2 = pos(2) == desired_point(2);
-eqn3 = pos(3) == desired_point(3);
-solution_ikin = solve([eqn1 eqn2 eqn3],[t1 t3 t4 t5],'ReturnConditions',true);
-t1_vals = real(simplify(solution_ikin.t1,'Steps',20))
-t3_vals = real(simplify(solution_ikin.t3,'Steps',20))
-t4_vals = real(simplify(solution_ikin.t4,'Steps',20))
-t5_vals = real(simplify(solution_ikin.t5,'Steps',20))
-conditions = solution_ikin.conditions
+eqn1 = pos(1) == desired_point(1)
+eqn2 = pos(2) == desired_point(2)
+eqn3 = pos(3) == desired_point(3)
+% From these equations t5 == -2.9786, pi+2.9786, 0.4805, pi-0.4805
+% if we pick t5 = 0.4805;
+eqn1 = subs(eqn1,t5,0.4805)
+eqn3 = subs(eqn3,t5,0.4806)
+% We are still left with 2 equations with 3 unknowns.
+% By selecting a value for t4 we can solve for t3. T4 is only bounded by
+% its own joint limitations and even if it weren't, there are an infinite
+% amount of numberse to choose between 0 and 1 meaning there are an
+% infinite number of choices for t4.
+% But then whatever we select for t3 and t4, t1 will be used to compensate
+% to make sure the equation is still valid in the z position. If we were
+% to unlock t2 and no longer have it fixed like we did to start this
+% approach, there would then be even more solutions. This means
+% there are an infinite number of solutions to the inverse kinematics
+% problem at this point based on the first 5 joints. Unless specific joints
+% are determined before hand, there will be an infinite number of solutions
+% based on the position equations for the robot.
 
 % By nature, theta 6 does not affect the position of the end effector and
-% so there will always be an infinite number of solutions to the inverse
-% kinematics problem.
+% so there will always be an infinite number of solutions to the any valid
+% inverse kinematics problem when considering all 6 joints.
 %% 7) Jacobian
 z0 = [0;0;1]; p0 = [0;0;0];
 z1 = T_total(1:3,3,1); p1 = T_total(1:3,4,1);
@@ -75,16 +93,19 @@ pe = T_total(1:3,4,6);
 Jv = simplify([z0 cross(z1,pe-p1) cross(z2,pe-p2)...
     z3 cross(z4,pe-p4) cross(z5,pe-p5)],'Steps', 10);
 Jw = simplify([zeros(3,1) z1 z2 zeros(3,1) z4 z5], 'Steps', 10);
-J = simplify([Jv; Jw],'Steps',10)
+J = simplify([Jv; Jw],'Steps',10);
+pretty(J);
 
 %% Determining Singularities
 % Only care about positional singularities
-Jv = simplify(subs(Jv,L,100),'Steps',20)
+Jv = simplify(subs(Jv,L,100),'Steps',20);
 % velocity jacobian
 det_Jv = simplify(det(Jv*Jv'),'Steps',20);
+pretty(det_Jv)
 % t2 does not affect singularity as it is not in the determinant of Jv*Jv'
 % Therefore we will set t2 = 0
 Jv1 = simplify(subs(Jv,t2,0));
+pretty(Jv1);
 %% find where x velcoties will be equal to 0
 % end effector is point directly in line with joint 2 and 3
 Jvx = Jv1(1,2:5) == zeros(1,4)
