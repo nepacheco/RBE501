@@ -176,7 +176,7 @@ Kp = [Kp1 0; 0 Kp2]; Kv = [Kv1 0 ; 0 Kv2];
 tau_control = Kp*(qd-q) + Kv*(qd_dot - q_dot) + D*qd_dotdot + C*qd_dot + G + B*q_dot + Jtip'*Ftip;
 pretty(tau_control)
 
-
+disp("TODO FIX TAU_CONTROL TO USE QDESIRED IN MATRICES m,d,c")
 %% Mobile Robot Constraints
 syms a r theta real
 syms wr wl x_dot y_dot theta_dot wf wsw real
